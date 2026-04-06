@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
       'X-Title': 'Real or Fake?',
     },
     body: JSON.stringify({
-      model: 'google/gemini-2.0-flash-001',
+      model: 'qwen/qwen3-235b-a22b-2507',
       messages: [
         { role: 'system', content: persona.system_prompt ?? '' },
         ...openRouterMessages,
