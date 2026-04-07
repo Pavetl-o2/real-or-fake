@@ -24,19 +24,14 @@ async function generateImage(prompt: string): Promise<string> {
   const apiKey = process.env.NANO_BANANA_API_KEY
   if (!apiKey) throw new Error('Image generation not configured')
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict?key=${apiKey}`
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent?key=${apiKey}`
 
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      instances: [{ prompt }],
-      parameters: {
-        sampleCount: 1,
-        aspectRatio: '4:3',
-        safetyFilterLevel: 'block_some',
-        personGeneration: 'allow_all',
-      },
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { responseModalities: ['IMAGE'] },
     }),
   })
 
@@ -47,11 +42,12 @@ async function generateImage(prompt: string): Promise<string> {
   }
 
   const data = await res.json()
-  const prediction = data.predictions?.[0]
-  if (!prediction?.bytesBase64Encoded) throw new Error('No image returned')
+  const parts = data.candidates?.[0]?.content?.parts ?? []
+  const imgPart = parts.find((p: { inlineData?: { data: string; mimeType: string } }) => p.inlineData)
+  if (!imgPart?.inlineData) throw new Error('No image returned')
 
-  const mime = prediction.mimeType ?? 'image/jpeg'
-  return `data:${mime};base64,${prediction.bytesBase64Encoded}`
+  const { mimeType, data: b64 } = imgPart.inlineData
+  return `data:${mimeType};base64,${b64}`
 }
 
 export async function POST(req: NextRequest) {
