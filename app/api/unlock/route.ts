@@ -9,14 +9,14 @@ type PersonaContext = {
 }
 
 function buildImagePrompt(persona: PersonaContext, description: string): string {
-  const cleanName = persona.name.replace(/[^\w\s]/g, '').trim()
   const loc = persona.location ?? 'a beautiful location'
   return (
-    `Lifestyle social media photo. ${description}. ` +
-    `Young woman, ${persona.age ?? 22} years old, based in ${loc}. ` +
-    `${cleanName} style influencer content. ` +
-    `Candid, authentic, natural lighting, high quality photography, vibrant colors. ` +
-    `No text, no watermarks, photorealistic, social media aesthetic.`
+    `High quality lifestyle photography. ${description}. ` +
+    `Young woman, ${persona.age ?? 22} years old, in ${loc}. ` +
+    `Authentic candid moment, natural lighting. ` +
+    `Match the scene exactly to the description — if it mentions beach show beach, ` +
+    `if it mentions gym show gym, if it mentions travel show that location. ` +
+    `Photorealistic, no text, no watermarks.`
   )
 }
 
