@@ -25,8 +25,7 @@ async function generateImage(prompt: string): Promise<string> {
   if (!apiKey) throw new Error('Image generation not configured')
 
   const models = [
-    'gemini-2.0-flash-preview-image-generation',
-    'gemini-2.0-flash-exp',
+    'gemini-3-pro-image-preview',
   ]
 
   let lastError = 'No image returned'
