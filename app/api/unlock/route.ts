@@ -24,30 +24,46 @@ async function generateImage(prompt: string): Promise<string> {
   const apiKey = process.env.NANO_BANANA_API_KEY
   if (!apiKey) throw new Error('Image generation not configured')
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent?key=${apiKey}`
+  const models = [
+    'gemini-2.0-flash-preview-image-generation',
+    'gemini-2.0-flash-exp',
+  ]
 
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { responseModalities: ['IMAGE'] },
-    }),
-  })
+  let lastError = 'No image returned'
 
-  if (!res.ok) {
-    const err = await res.text()
-    console.error('Image generation error:', err)
-    throw new Error(`Image generation failed: ${err}`)
+  for (const model of models) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { responseModalities: ['IMAGE', 'TEXT'] },
+      }),
+    })
+
+    if (!res.ok) {
+      const err = await res.text()
+      console.error(`[${model}] Image generation error:`, err)
+      lastError = `${model}: ${err}`
+      continue
+    }
+
+    const data = await res.json()
+    const parts = data.candidates?.[0]?.content?.parts ?? []
+    const imgPart = parts.find((p: { inlineData?: { data: string; mimeType: string } }) => p.inlineData)
+
+    if (!imgPart?.inlineData) {
+      lastError = `${model}: no image in response — ${JSON.stringify(data).slice(0, 200)}`
+      continue
+    }
+
+    const { mimeType, data: b64 } = imgPart.inlineData
+    return `data:${mimeType};base64,${b64}`
   }
 
-  const data = await res.json()
-  const parts = data.candidates?.[0]?.content?.parts ?? []
-  const imgPart = parts.find((p: { inlineData?: { data: string; mimeType: string } }) => p.inlineData)
-  if (!imgPart?.inlineData) throw new Error('No image returned')
-
-  const { mimeType, data: b64 } = imgPart.inlineData
-  return `data:${mimeType};base64,${b64}`
+  throw new Error(lastError)
 }
 
 export async function POST(req: NextRequest) {
@@ -81,8 +97,9 @@ export async function POST(req: NextRequest) {
     const prompt = buildImagePrompt(persona_context as PersonaContext, description)
     image_data = await generateImage(prompt)
   } catch (e) {
-    console.error('Image gen failed:', e)
-    return NextResponse.json({ error: 'Could not generate image' }, { status: 502 })
+    const msg = e instanceof Error ? e.message : String(e)
+    console.error('Image gen failed:', msg)
+    return NextResponse.json({ error: msg }, { status: 502 })
   }
 
   // Deduct credits
