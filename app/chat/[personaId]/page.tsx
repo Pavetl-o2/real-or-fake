@@ -54,12 +54,14 @@ function ContentCard({
   unlockedImage,
   buying,
   playerCredits,
+  error,
 }: {
   offer: ContentOffer
   onPurchase: () => void
   unlockedImage?: string
   buying: boolean
   playerCredits: number
+  error?: string
 }) {
   const canAfford = playerCredits >= offer.price
 
@@ -94,6 +96,9 @@ function ContentCard({
           <p className="text-white text-sm font-semibold">{TIER_LABELS[offer.tier] ?? '📸 Photo'}</p>
           {!canAfford && (
             <p className="text-red-400 text-xs mt-0.5">Not enough credits</p>
+          )}
+          {error && (
+            <p className="text-red-400 text-xs mt-0.5">{error}</p>
           )}
         </div>
         <button
@@ -185,6 +190,7 @@ export default function ChatPage() {
   // Content offer state
   const [unlockedImages, setUnlockedImages] = useState<Record<string, string>>({})
   const [buyingOffer, setBuyingOffer] = useState<Record<string, boolean>>({})
+  const [offerErrors, setOfferErrors] = useState<Record<string, string>>({})
 
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -351,6 +357,8 @@ export default function ChatPage() {
       sessionStorage.setItem('player', JSON.stringify(updatedPlayer))
     } catch (e) {
       console.error(e)
+      const msg = e instanceof Error ? e.message : 'Purchase failed'
+      setOfferErrors((prev) => ({ ...prev, [offerId]: msg }))
     } finally {
       setBuyingOffer((prev) => ({ ...prev, [offerId]: false }))
     }
@@ -490,6 +498,7 @@ export default function ChatPage() {
               unlockedImage={unlockedImages[entry.offerId]}
               buying={buyingOffer[entry.offerId] ?? false}
               playerCredits={player?.credits ?? 0}
+              error={offerErrors[entry.offerId]}
             />
           )
         })}

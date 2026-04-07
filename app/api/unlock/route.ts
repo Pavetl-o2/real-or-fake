@@ -35,7 +35,7 @@ async function generateImage(prompt: string): Promise<string> {
         sampleCount: 1,
         aspectRatio: '4:3',
         safetyFilterLevel: 'block_some',
-        personGeneration: 'allow_adult',
+        personGeneration: 'allow_all',
       },
     }),
   })
@@ -43,7 +43,7 @@ async function generateImage(prompt: string): Promise<string> {
   if (!res.ok) {
     const err = await res.text()
     console.error('Image generation error:', err)
-    throw new Error('Image generation failed')
+    throw new Error(`Image generation failed: ${err}`)
   }
 
   const data = await res.json()
