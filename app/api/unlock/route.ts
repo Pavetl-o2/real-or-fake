@@ -9,14 +9,14 @@ type PersonaContext = {
 }
 
 function buildImagePrompt(persona: PersonaContext, description: string): string {
-  const loc = persona.location ?? 'a beautiful location'
+  // Strip emojis so they don't confuse the model
+  const cleanDesc = description.replace(/[\u{1F300}-\u{1FFFF}]/gu, '').trim()
+  const loc = persona.location ?? 'unknown city'
   return (
-    `High quality lifestyle photography. ${description}. ` +
-    `Young woman, ${persona.age ?? 22} years old, in ${loc}. ` +
-    `Authentic candid moment, natural lighting. ` +
-    `Match the scene exactly to the description — if it mentions beach show beach, ` +
-    `if it mentions gym show gym, if it mentions travel show that location. ` +
-    `Photorealistic, no text, no watermarks.`
+    `SCENE: ${cleanDesc}. ` +
+    `Shoot this exact scene. Do NOT default to a rooftop or city skyline unless the description explicitly says so. ` +
+    `Young woman, ${persona.age ?? 22} years old, from ${loc}. ` +
+    `High quality photography, natural lighting, photorealistic. No text, no watermarks.`
   )
 }
 
