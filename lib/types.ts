@@ -105,3 +105,9 @@ export type ShameEntry = {
   caption: string | null
   created_at: string
 }
+
+export type ContentOffer = {
+  price: number
+  description: string
+  tier: 'standard' | 'premium' | 'bundle'
+}

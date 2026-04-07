@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import type { Persona, Player, Round, Message } from '@/lib/types'
+import type { Persona, Player, Round, Message, ContentOffer } from '@/lib/types'
 
 const MAX_MESSAGES = 30
 
@@ -19,6 +19,12 @@ const AVATAR_EMOJIS: Record<string, string> = {
   'Mika 🌸': '🇯🇵',
   'Valentina 🔥': '🇧🇷',
   'Ashley 💋': '⭐',
+}
+
+const TIER_LABELS: Record<string, string> = {
+  standard: '📸 Photo',
+  premium: '⭐ Exclusive',
+  bundle: '📦 Bundle',
 }
 
 function TypingIndicator() {
@@ -37,6 +43,67 @@ function TypingIndicator() {
         <span className="typing-dot" />
         <span className="typing-dot" />
         <span className="typing-dot" />
+      </div>
+    </div>
+  )
+}
+
+function ContentCard({
+  offer,
+  onPurchase,
+  unlockedImage,
+  buying,
+  playerCredits,
+}: {
+  offer: ContentOffer
+  onPurchase: () => void
+  unlockedImage?: string
+  buying: boolean
+  playerCredits: number
+}) {
+  const canAfford = playerCredits >= offer.price
+
+  if (unlockedImage) {
+    return (
+      <div className="mx-4 my-2 rounded-2xl overflow-hidden" style={{ border: '1px solid #ff2d7840' }}>
+        <img src={unlockedImage} alt="Unlocked content" className="w-full object-cover rounded-2xl" />
+        <div className="px-3 py-2 flex items-center gap-1.5" style={{ background: '#1a1a1a' }}>
+          <span className="text-green-400 text-xs">✓ Unlocked</span>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div
+      className="mx-4 my-2 rounded-2xl overflow-hidden"
+      style={{ background: '#1a1a1a', border: '1px solid #333' }}
+    >
+      {/* Blurred preview placeholder */}
+      <div
+        className="w-full flex flex-col items-center justify-center gap-2 py-8"
+        style={{ background: 'linear-gradient(135deg, #1f1f1f, #2a1a2a)' }}
+      >
+        <span className="text-4xl">🔒</span>
+        <p className="text-gray-400 text-xs text-center px-6 leading-relaxed">{offer.description}</p>
+      </div>
+
+      {/* Purchase row */}
+      <div className="flex items-center justify-between px-4 py-3">
+        <div>
+          <p className="text-white text-sm font-semibold">{TIER_LABELS[offer.tier] ?? '📸 Photo'}</p>
+          {!canAfford && (
+            <p className="text-red-400 text-xs mt-0.5">Not enough credits</p>
+          )}
+        </div>
+        <button
+          onClick={onPurchase}
+          disabled={buying || !canAfford}
+          className="flex items-center gap-1.5 px-5 py-2.5 rounded-full text-sm font-bold transition-all active:scale-95 disabled:opacity-40"
+          style={{ background: canAfford ? '#ff2d78' : '#333', color: '#fff' }}
+        >
+          {buying ? '⏳' : `💰 ${offer.price}`}
+        </button>
       </div>
     </div>
   )
@@ -88,6 +155,17 @@ function MessageBubble({
   )
 }
 
+type ChatEntry =
+  | { type: 'message'; message: Message }
+  | { type: 'offer'; offerId: string; offer: ContentOffer; personaContext: PersonaContext }
+
+type PersonaContext = {
+  name: string
+  age: number | null
+  location: string | null
+  is_real: boolean
+}
+
 export default function ChatPage() {
   const router = useRouter()
   const params = useParams()
@@ -97,11 +175,17 @@ export default function ChatPage() {
   const [player, setPlayer] = useState<Player | null>(null)
   const [round, setRound] = useState<Round | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
+  const [entries, setEntries] = useState<ChatEntry[]>([])
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const [typing, setTyping] = useState(false)
   const [loading, setLoading] = useState(true)
   const [flagModalId, setFlagModalId] = useState<string | null>(null)
+
+  // Content offer state
+  const [unlockedImages, setUnlockedImages] = useState<Record<string, string>>({})
+  const [buyingOffer, setBuyingOffer] = useState<Record<string, boolean>>({})
+
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -135,7 +219,10 @@ export default function ChatPage() {
         .eq('persona_id', personaId)
         .order('message_number', { ascending: true })
 
-      if (msgs) setMessages(msgs)
+      if (msgs) {
+        setMessages(msgs)
+        setEntries(msgs.map((m) => ({ type: 'message', message: m })))
+      }
       setLoading(false)
     }
 
@@ -144,9 +231,8 @@ export default function ChatPage() {
 
   useEffect(() => {
     scrollToBottom()
-  }, [messages, typing, scrollToBottom])
+  }, [entries, typing, scrollToBottom])
 
-  const playerMessageCount = messages.filter((m) => m.sender === 'player').length
   const totalMessageCount = messages.length
   const remaining = MAX_MESSAGES - totalMessageCount
   const batteryPct = (remaining / MAX_MESSAGES) * 100
@@ -171,6 +257,7 @@ export default function ChatPage() {
       created_at: new Date().toISOString(),
     }
     setMessages((prev) => [...prev, optimisticMsg])
+    setEntries((prev) => [...prev, { type: 'message', message: optimisticMsg }])
 
     try {
       const res = await fetch('/api/chat', {
@@ -187,13 +274,11 @@ export default function ChatPage() {
       const data = await res.json()
       if (!res.ok || data.error) throw new Error(data.error ?? 'API error')
 
-      // Show typing indicator for delay_ms
       setTyping(true)
       setSending(false)
       await new Promise((resolve) => setTimeout(resolve, data.delay_ms))
       setTyping(false)
 
-      // Add persona response
       const personaMsg: Message = {
         id: `persona-${Date.now()}`,
         round_id: round.id,
@@ -205,12 +290,69 @@ export default function ChatPage() {
         flagged: false,
         created_at: new Date().toISOString(),
       }
+
       setMessages((prev) => [...prev, personaMsg])
+
+      // Build new entries: persona message + optional offer card
+      const newEntries: ChatEntry[] = [{ type: 'message', message: personaMsg }]
+      if (data.content_offer) {
+        const offerId = `offer-${Date.now()}`
+        newEntries.push({
+          type: 'offer',
+          offerId,
+          offer: data.content_offer,
+          personaContext: data.persona_context,
+        })
+      }
+      setEntries((prev) => [...prev, ...newEntries])
     } catch (e) {
       console.error(e)
       setTyping(false)
       setSending(false)
       setMessages((prev) => prev.filter((m) => m.id !== optimisticMsg.id))
+      setEntries((prev) => prev.filter(
+        (e) => !(e.type === 'message' && e.message.id === optimisticMsg.id)
+      ))
+    }
+  }
+
+  async function purchaseOffer(
+    offerId: string,
+    offer: ContentOffer,
+    personaContext: PersonaContext
+  ) {
+    if (!player || !round) return
+    setBuyingOffer((prev) => ({ ...prev, [offerId]: true }))
+
+    try {
+      const res = await fetch('/api/unlock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          player_id: player.id,
+          persona_id: personaId,
+          round_id: round.id,
+          price: offer.price,
+          description: offer.description,
+          tier: offer.tier,
+          persona_context: personaContext,
+        }),
+      })
+
+      const data = await res.json()
+      if (!res.ok || data.error) throw new Error(data.error ?? 'Purchase failed')
+
+      // Update unlocked image
+      setUnlockedImages((prev) => ({ ...prev, [offerId]: data.image_data }))
+
+      // Update player credits in state + sessionStorage
+      const updatedPlayer = { ...player, credits: data.credits_remaining }
+      setPlayer(updatedPlayer)
+      sessionStorage.setItem('player', JSON.stringify(updatedPlayer))
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setBuyingOffer((prev) => ({ ...prev, [offerId]: false }))
     }
   }
 
@@ -222,6 +364,13 @@ export default function ChatPage() {
     const newFlagged = !current.flagged
     setMessages((prev) =>
       prev.map((m) => (m.id === messageId ? { ...m, flagged: newFlagged } : m))
+    )
+    setEntries((prev) =>
+      prev.map((e) =>
+        e.type === 'message' && e.message.id === messageId
+          ? { ...e, message: { ...e.message, flagged: newFlagged } }
+          : e
+      )
     )
     await fetch('/api/flag', {
       method: 'POST',
@@ -283,26 +432,37 @@ export default function ChatPage() {
           <p className="text-gray-500 text-xs">{persona.age} · {persona.location}</p>
         </div>
 
-        {/* Battery message counter */}
-        <div className="flex flex-col items-end gap-1">
-          <span className="text-xs" style={{ color: batteryColor }}>
-            {remaining} msgs left
-          </span>
+        <div className="flex items-center gap-3">
+          {/* Credits */}
           <div
-            className="w-12 h-2 rounded-full overflow-hidden"
-            style={{ background: '#333' }}
+            className="flex items-center gap-1 px-2.5 py-1 rounded-full"
+            style={{ background: '#1a1a1a', border: '1px solid #333' }}
           >
+            <span className="text-yellow-400 text-xs">💰</span>
+            <span className="text-white font-bold text-xs">{player?.credits ?? 0}</span>
+          </div>
+
+          {/* Battery message counter */}
+          <div className="flex flex-col items-end gap-1">
+            <span className="text-xs" style={{ color: batteryColor }}>
+              {remaining} left
+            </span>
             <div
-              className="h-full rounded-full transition-all duration-300"
-              style={{ width: `${batteryPct}%`, background: batteryColor }}
-            />
+              className="w-10 h-1.5 rounded-full overflow-hidden"
+              style={{ background: '#333' }}
+            >
+              <div
+                className="h-full rounded-full transition-all duration-300"
+                style={{ width: `${batteryPct}%`, background: batteryColor }}
+              />
+            </div>
           </div>
         </div>
       </div>
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto py-2">
-        {messages.length === 0 && (
+        {entries.length === 0 && (
           <div className="flex items-center justify-center h-full">
             <div className="text-center px-8">
               <p className="text-gray-600 text-sm">
@@ -312,13 +472,27 @@ export default function ChatPage() {
           </div>
         )}
 
-        {messages.map((msg) => (
-          <MessageBubble
-            key={msg.id}
-            message={msg}
-            onLongPress={(id) => setFlagModalId(id)}
-          />
-        ))}
+        {entries.map((entry) => {
+          if (entry.type === 'message') {
+            return (
+              <MessageBubble
+                key={entry.message.id}
+                message={entry.message}
+                onLongPress={(id) => setFlagModalId(id)}
+              />
+            )
+          }
+          return (
+            <ContentCard
+              key={entry.offerId}
+              offer={entry.offer}
+              onPurchase={() => purchaseOffer(entry.offerId, entry.offer, entry.personaContext)}
+              unlockedImage={unlockedImages[entry.offerId]}
+              buying={buyingOffer[entry.offerId] ?? false}
+              playerCredits={player?.credits ?? 0}
+            />
+          )
+        })}
 
         {typing && <TypingIndicator />}
         <div ref={bottomRef} className="h-2" />

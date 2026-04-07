@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase'
+import type { ContentOffer } from '@/lib/types'
+
+const OFFER_REGEX = /\[OFFER:(\{[^}]+\})\]/
 
 export async function POST(req: NextRequest) {
   const { persona_id, player_id, round_id, message } = await req.json()
@@ -87,12 +90,29 @@ export async function POST(req: NextRequest) {
   }
 
   const aiData = await openRouterRes.json()
-  const responseText: string =
-    aiData.choices?.[0]?.message?.content?.trim() ?? '...'
+  const rawText: string = aiData.choices?.[0]?.message?.content?.trim() ?? '...'
+
+  // Parse out content offer tag if present
+  let content_offer: ContentOffer | null = null
+  let responseText = rawText
+
+  const offerMatch = rawText.match(OFFER_REGEX)
+  if (offerMatch) {
+    try {
+      const parsed = JSON.parse(offerMatch[1])
+      if (parsed.price && parsed.description && parsed.tier) {
+        content_offer = parsed as ContentOffer
+      }
+      responseText = rawText.replace(offerMatch[0], '').trim()
+    } catch {
+      // Malformed tag — strip it but don't surface an offer
+      responseText = rawText.replace(offerMatch[0], '').trim()
+    }
+  }
 
   const personaMsgNum = nextPlayerMsgNum + 1
 
-  // Save persona response
+  // Save persona response (clean text, no offer tag)
   await supabase.from('messages').insert({
     round_id,
     persona_id,
@@ -111,5 +131,12 @@ export async function POST(req: NextRequest) {
     response: responseText,
     message_number: personaMsgNum,
     delay_ms,
+    content_offer,
+    persona_context: {
+      name: persona.display_name,
+      age: persona.age,
+      location: persona.location,
+      is_real: persona.is_real,
+    },
   })
 }
