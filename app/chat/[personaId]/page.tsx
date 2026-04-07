@@ -162,7 +162,7 @@ function MessageBubble({
 
 type ChatEntry =
   | { type: 'message'; message: Message }
-  | { type: 'offer'; offerId: string; offer: ContentOffer; personaContext: PersonaContext }
+  | { type: 'offer'; offerId: string; offer: ContentOffer; personaContext: PersonaContext; messageContext: string }
 
 type PersonaContext = {
   name: string
@@ -308,6 +308,7 @@ export default function ChatPage() {
           offerId,
           offer: data.content_offer,
           personaContext: data.persona_context,
+          messageContext: data.response, // actual message text drives the image scene
         })
       }
       setEntries((prev) => [...prev, ...newEntries])
@@ -325,7 +326,8 @@ export default function ChatPage() {
   async function purchaseOffer(
     offerId: string,
     offer: ContentOffer,
-    personaContext: PersonaContext
+    personaContext: PersonaContext,
+    messageContext: string
   ) {
     if (!player || !round) return
     setBuyingOffer((prev) => ({ ...prev, [offerId]: true }))
@@ -342,6 +344,7 @@ export default function ChatPage() {
           description: offer.description,
           tier: offer.tier,
           persona_context: personaContext,
+          message_context: messageContext,
         }),
       })
 
@@ -494,7 +497,7 @@ export default function ChatPage() {
             <ContentCard
               key={entry.offerId}
               offer={entry.offer}
-              onPurchase={() => purchaseOffer(entry.offerId, entry.offer, entry.personaContext)}
+              onPurchase={() => purchaseOffer(entry.offerId, entry.offer, entry.personaContext, entry.messageContext)}
               unlockedImage={unlockedImages[entry.offerId]}
               buying={buyingOffer[entry.offerId] ?? false}
               playerCredits={player?.credits ?? 0}

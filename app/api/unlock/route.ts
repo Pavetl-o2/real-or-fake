@@ -8,14 +8,21 @@ type PersonaContext = {
   is_real: boolean
 }
 
-function buildImagePrompt(persona: PersonaContext, description: string): string {
-  // Strip emojis so they don't confuse the model
-  const cleanDesc = description.replace(/[\u{1F300}-\u{1FFFF}]/gu, '').trim()
+function buildImagePrompt(persona: PersonaContext, description: string, messageContext: string): string {
   const loc = persona.location ?? 'unknown city'
+  // Use message context as primary scene driver — it contains what was actually discussed.
+  // Strip emojis and asterisk markdown from message text.
+  const cleanMsg = messageContext
+    .replace(/\*+/g, '')
+    .replace(/[\u{1F300}-\u{1FFFF}]/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 300) // cap length
   return (
-    `SCENE: ${cleanDesc}. ` +
-    `Shoot this exact scene. Do NOT default to a rooftop or city skyline unless the description explicitly says so. ` +
+    `PHOTO SCENE based on this context: "${cleanMsg}". ` +
     `Young woman, ${persona.age ?? 22} years old, from ${loc}. ` +
+    `Render exactly the scene described in the context above. ` +
+    `Do NOT default to a rooftop unless the context explicitly mentions one. ` +
     `High quality photography, natural lighting, photorealistic. No text, no watermarks.`
   )
 }
@@ -66,7 +73,7 @@ async function generateImage(prompt: string): Promise<string> {
 }
 
 export async function POST(req: NextRequest) {
-  const { player_id, persona_id, round_id, price, description, tier, persona_context } =
+  const { player_id, persona_id, round_id, price, description, tier, persona_context, message_context } =
     await req.json()
 
   if (!player_id || !persona_id || !round_id || !price || !description || !tier) {
@@ -93,7 +100,7 @@ export async function POST(req: NextRequest) {
   // Generate image before charging (don't charge if it fails)
   let image_data: string
   try {
-    const prompt = buildImagePrompt(persona_context as PersonaContext, description)
+    const prompt = buildImagePrompt(persona_context as PersonaContext, description, message_context ?? description)
     image_data = await generateImage(prompt)
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
